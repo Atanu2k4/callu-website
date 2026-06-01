@@ -53,7 +53,7 @@ For local development, run this server locally and change `VITE_API_URL` to your
 | Real-time | [Socket.IO](https://socket.io) (server + client) |
 | Video/Voice | [SimplePeer](https://github.com/feross/simple-peer) (WebRTC) |
 | Database | [MongoDB](https://www.mongodb.com) via [Mongoose](https://mongoosejs.com) |
-| Email / OTP | [Resend](https://resend.com) |
+| Email / OTP | [Nodemailer](https://nodemailer.com) (SMTP / Gmail) |
 | File Storage | [ImageKit](https://imagekit.io) |
 | Music | [YouTube IFrame API](https://developers.google.com/youtube/iframe_api_reference) via react-youtube |
 | Deployment | [Render](https://render.com) |
@@ -65,7 +65,7 @@ For local development, run this server locally and change `VITE_API_URL` to your
 - **Node.js** ≥ 18
 - **npm** ≥ 9
 - A running **MongoDB** instance (local or Atlas)
-- A **Resend** account with an API key and a verified sender address
+- A **Gmail** account with an [App Password](https://support.google.com/accounts/answer/185833) (or any SMTP provider)
 - *(Optional)* An **ImageKit** account for room chat file attachments
 
 ---
@@ -121,8 +121,11 @@ MONGODB_URI=
 NEXT_PUBLIC_URL=https://callu.up.railway.app
 OTP_BCC_EMAIL=
 PORT=
-RESEND_API_KEY=
-RESEND_FROM_EMAIL=
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM_NAME=CALLU
 ```
 
 > **Note:** You can replace `NEXT_PUBLIC_URL` with your local URL (for example `http://localhost:3000`) for local development.  
