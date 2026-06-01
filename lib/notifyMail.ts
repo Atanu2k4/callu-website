@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 
 export type NotifyMailParams = {
   to: string;
@@ -41,7 +42,7 @@ const createTransporter = () => {
     tls: {
       rejectUnauthorized: false, // avoid TLS cert mismatches on Railway
     },
-  });
+  } as SMTPTransport.Options);
 };
 
 export const sendNotifyMail = async ({
