@@ -32,6 +32,15 @@ const createTransporter = () => {
       user: SMTP_USER,
       pass: SMTP_PASS,
     },
+    // Force IPv4 — Railway does not route IPv6 outbound SMTP
+    family: 4,
+    // Connection timeouts for cloud environments
+    connectionTimeout: 10000, // 10s
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    tls: {
+      rejectUnauthorized: false, // avoid TLS cert mismatches on Railway
+    },
   });
 };
 

@@ -4,21 +4,20 @@
 export function validateEmailConfig(): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM_EMAIL;
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
 
-  if (!apiKey) {
-    issues.push("❌ RESEND_API_KEY is not configured");
-  } else if (!apiKey.startsWith("re_")) {
-    issues.push("⚠️  RESEND_API_KEY may be invalid (should start with 're_')");
+  if (!smtpHost) {
+    issues.push("❌ SMTP_HOST is not configured");
   }
 
-  if (!fromEmail) {
-    issues.push("❌ RESEND_FROM_EMAIL is not configured");
-  } else if (fromEmail.includes("onboarding@resend.dev")) {
-    issues.push(
-      "⚠️  RESEND_FROM_EMAIL uses sandbox domain (onboarding@resend.dev). Only verified recipients will receive emails."
-    );
+  if (!smtpUser) {
+    issues.push("❌ SMTP_USER is not configured");
+  }
+
+  if (!smtpPass) {
+    issues.push("❌ SMTP_PASS is not configured");
   }
 
   return {
