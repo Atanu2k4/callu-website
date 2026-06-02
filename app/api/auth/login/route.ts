@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import User from "@/models/User";
-import LoginOtp from "@/models/LoginOtp";
+import LoginSession from "@/models/LoginSession";
 import { verifyPassword } from "@/lib/password";
-import { sendNotifyMail } from "@/lib/notifyMail";
 import crypto from "node:crypto";
 
 const hashValue = (value: string) =>
   crypto.createHash("sha256").update(value).digest("hex");
 
-const makeCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+const makeToken = () => crypto.randomBytes(32).toString("hex");
+
+// 30 days
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function POST(req: Request) {
   try {
@@ -22,7 +24,7 @@ export async function POST(req: Request) {
 
     const { identifier, email, username, password, adminId } = body || {};
 
-    // ─── Admin login (no OTP) ───────────────────────────────────────────────
+    // ─── Admin login (no session) ───────────────────────────────────────────
     const ADMIN_ID = process.env.ADMIN_ID;
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
@@ -57,7 +59,6 @@ export async function POST(req: Request) {
       );
     }
 
-
     await dbConnect();
 
     const normalizedId = loginId.trim().toLowerCase();
@@ -83,52 +84,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid credentials" }, { status: 401 });
     }
 
-    // ─── Password OK → send OTP ─────────────────────────────────────────────
-    const code = makeCode();
-    const codeHash = hashValue(code);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    // ─── Password OK → create 30-day session directly ───────────────────────
+    const sessionToken = makeToken();
+    const tokenHash = hashValue(sessionToken);
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
-    await LoginOtp.findOneAndUpdate(
-      { email: normalizedId },
-      { codeHash, expiresAt },
-      { upsert: true, returnDocument: "after" }
-    );
+    await LoginSession.create({
+      userId: user._id.toString(),
+      email: normalizedId,
+      tokenHash,
+      expiresAt,
+    });
 
-    console.log(`[Login] OTP generated for ${normalizedId}, expires at ${expiresAt.toISOString()}`);
+    console.log(`[Login] ✅ Session created for ${normalizedId}, expires ${expiresAt.toISOString()}`);
 
-    const subject = "Your CALLU verification code";
-    const text = `Your CALLU verification code is ${code}. It expires in 10 minutes.`;
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background:#09090b; color:#ffffff; padding:32px;">
-        <div style="max-width:520px;margin:0 auto;background:#18181b;border-radius:16px;padding:28px;border:1px solid #27272a;">
-          <h1 style="margin:0 0 12px;font-size:22px;">CALLU verification</h1>
-          <p style="margin:0 0 18px;color:#a1a1aa;">Use this code to complete your sign in. It expires in 10 minutes.</p>
-          <div style="font-size:32px;font-weight:700;letter-spacing:8px;background:#0f172a;border:1px solid #1f2937;border-radius:12px;padding:16px;text-align:center;">
-            ${code}
-          </div>
-          <p style="margin:16px 0 0;color:#71717a;font-size:12px;">If you didn't request this, someone may have your password — consider changing it.</p>
-        </div>
-      </div>
-    `;
+    const userObject = user.toObject ? user.toObject() : { ...user };
+    delete userObject.passwordHash;
 
-    try {
-      await sendNotifyMail({ to: normalizedId, subject, text, html });
-      console.log(`[Login] ✅ OTP sent to ${normalizedId}`);
-    } catch (emailError: any) {
-      console.error(`[Login] ❌ Failed to send OTP to ${normalizedId}:`, emailError?.message);
-      return NextResponse.json(
-        { message: "Failed to send verification code. Please try again." },
-        { status: 503 }
-      );
-    }
-
-    // Tell the client to show the OTP step
     return NextResponse.json(
-      {
-        requiresOtp: true,
-        email: normalizedId,
-        message: `A verification code has been sent to ${normalizedId}`,
-      },
+      { user: userObject, sessionToken, expiresAt: expiresAt.toISOString() },
       { status: 200 }
     );
   } catch (error) {

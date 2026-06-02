@@ -76,38 +76,17 @@ export async function POST(req: Request) {
     `;
 
     try {
-      console.log(`[OTP] Sending OTP email to ${email} via SMTP...`);
+      console.log(`[OTP] Sending OTP email to ${email}...`);
       await sendNotifyMail({ to: email, subject, text, html });
       console.log(`[OTP] ✅ OTP email sent successfully to ${email}`);
       return NextResponse.json({ message: "Verification code sent" }, { status: 200 });
     } catch (emailError: any) {
       const errorMsg = emailError?.message || emailError?.toString() || "Unknown email error";
       console.error(`[OTP] ❌ Email send FAILED for ${email}:`, errorMsg);
-
-      if (
-        errorMsg.includes("not configured") ||
-        errorMsg.includes("Missing") ||
-        errorMsg.includes("EAUTH") ||
-        errorMsg.includes("535")
-      ) {
-        return NextResponse.json(
-          { message: "Email service configuration error. Contact admin.", code: "CONFIG_ERROR" },
-          { status: 500 }
-        );
-      }
-
-      if (
-        errorMsg.includes("ECONNREFUSED") ||
-        errorMsg.includes("ETIMEDOUT") ||
-        errorMsg.includes("timeout")
-      ) {
-        return NextResponse.json(
-          { message: "Email service temporarily unavailable. Please retry.", code: "TRANSIENT_ERROR" },
-          { status: 503 }
-        );
-      }
-
-      throw emailError;
+      return NextResponse.json(
+        { message: "Failed to send verification code. Please try again." },
+        { status: 503 }
+      );
     }
   } catch (error: any) {
     const errorMsg = error?.message || error?.toString() || "Failed to send code";

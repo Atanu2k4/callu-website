@@ -137,19 +137,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return { success: false };
       }
 
-      // Admin login — session returned directly (no OTP)
+      // Admin login — no session token
       if (data.user && data.user.role === "admin") {
         setUser(data.user);
         localStorage.setItem(USER_KEY, JSON.stringify(data.user));
         return { success: true };
       }
 
-      // Regular user — OTP required
-      if (data.requiresOtp) {
-        return { success: true, requiresOtp: true, email: data.email };
-      }
-
-      // Fallback: session returned directly
+      // Regular user — session returned directly
       if (data.user) {
         setUser(data.user);
         localStorage.setItem(USER_KEY, JSON.stringify(data.user));

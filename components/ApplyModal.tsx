@@ -118,7 +118,7 @@ function FloatingInput({
 
 /* ── Sign-In form ── */
 function SignInForm({ onSuccess, redirectOnSuccess = true }: { onSuccess: () => void; redirectOnSuccess?: boolean }) {
-  const { login, verifyOtp } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -126,24 +126,10 @@ function SignInForm({ onSuccess, redirectOnSuccess = true }: { onSuccess: () => 
   const [loading, setLoading] = useState(false);
   const [shaking, setShaking] = useState(false);
 
-  // OTP step
-  const [step, setStep] = useState<"credentials" | "otp">("credentials");
-  const [otpEmail, setOtpEmail] = useState("");
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
-  const [resendCountdown, setResendCountdown] = useState(0);
-  const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
-
   const triggerShake = () => {
     setShaking(true);
     setTimeout(() => setShaking(false), 500);
   };
-
-  // Countdown timer for resend
-  useEffect(() => {
-    if (resendCountdown <= 0) return;
-    const t = setTimeout(() => setResendCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [resendCountdown]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,15 +142,7 @@ function SignInForm({ onSuccess, redirectOnSuccess = true }: { onSuccess: () => 
       return;
     }
 
-    if (result.requiresOtp && result.email) {
-      setOtpEmail(result.email);
-      setStep("otp");
-      setResendCountdown(60);
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
-      return;
-    }
-
-    // Admin or direct session
+    // Session created directly — redirect
     if (redirectOnSuccess) {
       const stored = JSON.parse(localStorage.getItem("callu_user") || "{}");
       if (stored.role === "admin") router.push("/admin");
@@ -173,153 +151,6 @@ function SignInForm({ onSuccess, redirectOnSuccess = true }: { onSuccess: () => 
     onSuccess();
   };
 
-  const handleOtpChange = (index: number, value: string) => {
-    const cleaned = value.replace(/\D/g, "").slice(-1);
-    const next = [...otp];
-    next[index] = cleaned;
-    setOtp(next);
-    if (cleaned && index < 5) {
-      otpRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent) => {
-    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (text.length === 6) {
-      e.preventDefault();
-      setOtp(text.split(""));
-      otpRefs.current[5]?.focus();
-    }
-  };
-
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = otp.join("");
-    if (code.length < 6) {
-      toast.error("Please enter the 6-digit code");
-      triggerShake();
-      return;
-    }
-    setLoading(true);
-    const success = await verifyOtp(otpEmail, code);
-    setLoading(false);
-
-    if (!success) {
-      setOtp(["", "", "", "", "", ""]);
-      otpRefs.current[0]?.focus();
-      triggerShake();
-      return;
-    }
-
-    if (redirectOnSuccess) {
-      const stored = JSON.parse(localStorage.getItem("callu_user") || "{}");
-      if (stored.role === "admin") router.push("/admin");
-      else router.push("/dashboard");
-    }
-    onSuccess();
-  };
-
-  const handleResendOtp = async () => {
-    if (resendCountdown > 0) return;
-    try {
-      const res = await fetch("/api/auth/otp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: otpEmail }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success("New code sent!");
-        setOtp(["", "", "", "", "", ""]);
-        setResendCountdown(60);
-        setTimeout(() => otpRefs.current[0]?.focus(), 50);
-      } else {
-        toast.error(data.message || "Failed to resend code");
-      }
-    } catch {
-      toast.error("Failed to resend code");
-    }
-  };
-
-  // ── OTP step UI ──
-  if (step === "otp") {
-    return (
-      <form onSubmit={handleOtpSubmit} className={`space-y-5 animate-in slide-in-from-right-3 duration-300 ${shaking ? "shake" : ""}`}>
-        <div className="text-center">
-          <div className="w-14 h-14 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/20">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect width="20" height="16" x="2" y="4" rx="2"/>
-              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
-            </svg>
-          </div>
-          <p className="text-zinc-400 text-xs leading-relaxed">
-            We sent a 6-digit code to<br />
-            <span className="text-zinc-200 font-medium">{otpEmail}</span>
-          </p>
-        </div>
-
-        {/* OTP boxes */}
-        <div className="flex gap-2 justify-center" onPaste={handleOtpPaste}>
-          {otp.map((digit, i) => (
-            <input
-              key={i}
-              ref={(el) => { otpRefs.current[i] = el; }}
-              type="text"
-              inputMode="numeric"
-              maxLength={1}
-              value={digit}
-              onChange={(e) => handleOtpChange(i, e.target.value)}
-              onKeyDown={(e) => handleOtpKeyDown(i, e)}
-              className="w-11 h-13 text-center text-lg font-bold bg-zinc-900/60 border border-zinc-800/80 rounded-xl text-zinc-200 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/15 focus:bg-zinc-900 transition-all duration-200 caret-transparent"
-              style={{ height: "52px" }}
-            />
-          ))}
-        </div>
-
-        <button
-          disabled={loading || otp.join("").length < 6}
-          type="submit"
-          className="w-full mt-2 bg-white text-black font-bold py-3.5 rounded-xl hover:bg-zinc-100 active:scale-[0.97] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_24px_rgba(255,255,255,0.08)] text-sm tracking-wide disabled:opacity-50 relative overflow-hidden group"
-        >
-          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out pointer-events-none" />
-          {loading ? (
-            <Loader2 className="animate-spin" size={18} />
-          ) : (
-            <>
-              Verify & Sign In
-              <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform duration-200" />
-            </>
-          )}
-        </button>
-
-        <div className="flex items-center justify-between text-xs text-zinc-600 pt-1">
-          <button
-            type="button"
-            onClick={() => { setStep("credentials"); setOtp(["", "", "", "", "", ""]); }}
-            className="hover:text-zinc-300 transition-colors cursor-pointer"
-          >
-            ← Change email
-          </button>
-          <button
-            type="button"
-            onClick={handleResendOtp}
-            disabled={resendCountdown > 0}
-            className={`transition-colors cursor-pointer ${resendCountdown > 0 ? "text-zinc-700" : "hover:text-zinc-300"}`}
-          >
-            {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Resend code"}
-          </button>
-        </div>
-      </form>
-    );
-  }
-
-  // ── Credentials step UI ──
   return (
     <form onSubmit={handleLogin} className={`space-y-4 animate-in slide-in-from-left-3 duration-300 ${shaking ? "shake" : ""}`}>
       <FloatingInput
@@ -355,7 +186,7 @@ function SignInForm({ onSuccess, redirectOnSuccess = true }: { onSuccess: () => 
           <Loader2 className="animate-spin" size={18} />
         ) : (
           <>
-            Continue
+            Sign In
             <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform duration-200" />
           </>
         )}
@@ -410,7 +241,12 @@ function SignUpForm({
       triggerShake();
       return;
     }
-    if (confirmPassword && confirmPassword !== formData.password) {
+    if (!confirmPassword) {
+      toast.error("Please confirm your password");
+      triggerShake();
+      return;
+    }
+    if (confirmPassword !== formData.password) {
       toast.error("Passwords do not match");
       triggerShake();
       return;
