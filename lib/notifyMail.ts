@@ -1,5 +1,4 @@
-import nodemailer from "nodemailer";
-import type SMTPTransport from "nodemailer/lib/smtp-transport";
+import Mailjet from "node-mailjet";
 
 export type NotifyMailParams = {
   to: string;
@@ -15,36 +14,6 @@ const isValidEmail = (email: string): boolean => {
   return emailRegex.test(email);
 };
 
-// Create a reusable SMTP transporter
-const createTransporter = () => {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
-
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    throw new Error(
-      "Email service not configured: Missing SMTP_HOST, SMTP_USER, or SMTP_PASS"
-    );
-  }
-
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT) || 587,
-    secure: Number(SMTP_PORT) === 465, // true for port 465, false for 587
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-    // Force IPv4 — Railway does not route IPv6 outbound SMTP
-    family: 4,
-    // Connection timeouts for cloud environments
-    connectionTimeout: 10000, // 10s
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    tls: {
-      rejectUnauthorized: false, // avoid TLS cert mismatches on Railway
-    },
-  } as SMTPTransport.Options);
-};
-
 export const sendNotifyMail = async ({
   to,
   bcc,
@@ -52,32 +21,56 @@ export const sendNotifyMail = async ({
   text,
   html,
 }: NotifyMailParams) => {
-  const { SMTP_USER, SMTP_FROM_NAME } = process.env;
+  const apiKey = process.env.MAILJET_API_KEY;
+  const apiSecret = process.env.MAILJET_API_SECRET;
+  const fromEmail = process.env.MAILJET_FROM_EMAIL;
+  const fromName = process.env.MAILJET_FROM_NAME || "CALLU";
+
+  if (!apiKey || !apiSecret) {
+    throw new Error(
+      "Email service not configured: Missing MAILJET_API_KEY or MAILJET_API_SECRET"
+    );
+  }
+
+  if (!fromEmail) {
+    throw new Error(
+      "Email service not configured: Missing MAILJET_FROM_EMAIL"
+    );
+  }
 
   if (!isValidEmail(to)) {
     console.warn(`[Email] Invalid recipient email: ${to}`);
     throw new Error(`Invalid email address: ${to}`);
   }
 
-  const fromName = SMTP_FROM_NAME || "CALLU";
-  const fromAddress = SMTP_USER || "";
-  const from = `${fromName} <${fromAddress}>`;
+  const mailjet = new Mailjet({ apiKey, apiSecret });
 
-  const transporter = createTransporter();
+  const recipients: { Email: string }[] = [{ Email: to }];
 
-  const mailOptions: nodemailer.SendMailOptions = {
-    from,
-    to,
-    subject,
-    text,
-    html,
-    ...(bcc && isValidEmail(bcc) ? { bcc } : {}),
+  const body: Record<string, unknown> = {
+    Messages: [
+      {
+        From: { Email: fromEmail, Name: fromName },
+        To: recipients,
+        Subject: subject,
+        TextPart: text,
+        HTMLPart: html,
+        ...(bcc && isValidEmail(bcc)
+          ? { Bcc: [{ Email: bcc }] }
+          : {}),
+      },
+    ],
   };
 
-  console.log(`[Email] Sending email via SMTP to: ${to}, FROM: ${from}`);
+  console.log(`[Email] Sending email via Mailjet to: ${to}, FROM: ${fromName} <${fromEmail}>`);
 
-  const info = await transporter.sendMail(mailOptions);
+  const result = await mailjet
+    .post("send", { version: "v3.1" })
+    .request(body);
 
-  console.log(`[Email] ✅ Email sent successfully. MessageId: ${info.messageId}`);
-  return info;
+  const messageId =
+    (result.body as any)?.Messages?.[0]?.To?.[0]?.MessageID ?? "unknown";
+
+  console.log(`[Email] ✅ Email sent successfully. MessageId: ${messageId}`);
+  return result;
 };
