@@ -8,6 +8,16 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const role = searchParams.get('role');
+    const ids = searchParams.get('ids'); // comma-separated user IDs for invite modal
+
+    // Fetch specific users by IDs (used by invite modal)
+    if (ids) {
+      const idList = ids.split(',').filter(Boolean);
+      const users = await User.find({ _id: { $in: idList } })
+        .select('name avatarConfig color')
+        .lean();
+      return NextResponse.json({ users }, { status: 200 });
+    }
 
     // Build query
     const query: any = {};

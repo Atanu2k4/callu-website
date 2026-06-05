@@ -31,6 +31,11 @@ const RoomSchema = new Schema({
     enum: ['public', 'private'],
     default: 'public',
   },
+  visibility: {
+    type: String,
+    enum: ['hidden', 'visible'],
+    default: 'visible',
+  }
 }, { timestamps: true });
 
 const Room = models.Room || model('Room', RoomSchema);

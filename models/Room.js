@@ -32,6 +32,11 @@ var RoomSchema = new mongoose_1.Schema({
         enum: ['public', 'private'],
         default: 'public',
     },
+    visibility: {
+        type: String,
+        enum: ['hidden', 'visible'],
+        default: 'visible',
+    }
 }, { timestamps: true });
 var Room = mongoose_1.models.Room || (0, mongoose_1.model)('Room', RoomSchema);
 exports.default = Room;

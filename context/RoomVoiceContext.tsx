@@ -1151,6 +1151,19 @@ export const RoomVoiceProvider = ({ children }: { children: React.ReactNode }) =
       }).catch(() => {});
     }
 
+    // Remove this room from admitted-rooms so the user must re-request access next time
+    if (rid) {
+      try {
+        const admittedRooms: string[] = JSON.parse(localStorage.getItem('admitted-rooms') || '[]');
+        const updated = admittedRooms.filter(id => id !== rid);
+        if (updated.length > 0) {
+          localStorage.setItem('admitted-rooms', JSON.stringify(updated));
+        } else {
+          localStorage.removeItem('admitted-rooms');
+        }
+      } catch {}
+    }
+
     voiceRoomIdRef.current = null;
     isVoiceConnectedRef.current = false;
     setVoiceRoomId(null);

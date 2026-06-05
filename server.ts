@@ -74,6 +74,9 @@ connectDB().then(() => {
       attachments?: Array<{ key: string; url: string; name: string; type: string; size: number; expiresAt: string }>;
       createdAt: string;
     }>>();
+    const roomJoinRequests = new Map<string, Array<{ userId: string; name: string; avatar: string | null; color: string }>>();
+    // Tracks users who have been explicitly admitted to a private room this session
+    const roomAdmittedUsers = new Map<string, Set<string>>(); // roomId -> Set<userId>
 
     const imagekitPublicKey = process.env.IMAGEKIT_PUBLIC_KEY;
     const imagekitPrivateKey = process.env.IMAGEKIT_PRIVATE_KEY;
@@ -156,9 +159,44 @@ connectDB().then(() => {
       });
 
       // Room Events
-      socket.on("join-room", (data: { roomId: string; userId: string; userName: string; avatar: string | null; color: string }) => {
+      socket.on("join-room", async (data: { roomId: string; userId: string; userName: string; avatar: string | null; color: string }) => {
         const { roomId, userId, userName, avatar, color } = data;
         console.log(`User ${userName} (${userId}) joining room ${roomId}`);
+
+        // ── Server-side private room gate ───────────────────────────
+        // For private+visible rooms, only the owner OR users who have been
+        // explicitly admitted (removed from the pending requests list) may join.
+        try {
+          const roomDoc = await (Room as any).findById(roomId).lean();
+          if (roomDoc && roomDoc.roomType === 'private') {
+            const ownerId = roomDoc.createdBy.toString();
+            if (userId !== ownerId) {
+              if (roomDoc.visibility === 'hidden') {
+                // For hidden rooms, only admitted users can join. No pending requests allowed.
+                const admittedSet = roomAdmittedUsers.get(roomId);
+                if (!admittedSet || !admittedSet.has(userId)) {
+                  socket.emit("join-denied", { roomId, reason: "This is a hidden private room. Invite only." });
+                  return;
+                }
+              } else {
+                // For visible rooms, check pending requests and admitted status
+                const pendingRequests = roomJoinRequests.get(roomId) || [];
+                const hasPendingRequest = pendingRequests.some(r => r.userId === userId);
+                if (hasPendingRequest) {
+                  socket.emit("join-denied", { roomId, reason: "Waiting for owner approval." });
+                  return;
+                }
+                const admittedSet = roomAdmittedUsers.get(roomId);
+                if (!admittedSet || !admittedSet.has(userId)) {
+                  socket.emit("join-denied", { roomId, reason: "This is a private room. Request access from the sidebar." });
+                  return;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error checking room access:", err);
+        }
 
         // If user was already in another room, leave it first
         const prevRoomId = socket.data.currentRoom as string | undefined;
@@ -222,6 +260,78 @@ connectDB().then(() => {
 
         socket.to(roomId).emit("room-user-left", { userId });
         emitRoomCount(roomId);
+      });
+
+      socket.on("room-request-join", async (data: { roomId: string; userId: string; name: string; avatar: string | null; color: string }) => {
+        const { roomId, userId, name, avatar, color } = data;
+        const room = await (Room as any).findById(roomId);
+        if (!room) return;
+        
+        const ownerId = room.createdBy.toString();
+        
+        let requests = roomJoinRequests.get(roomId) || [];
+        if (!requests.find(r => r.userId === userId)) {
+          requests.push({ userId, name, avatar, color });
+          roomJoinRequests.set(roomId, requests);
+        }
+        
+        // Notify owner
+        const ownerSocket = userSockets.get(ownerId) || onlineUsers.get(ownerId);
+        if (ownerSocket) {
+          io.to(ownerSocket).emit("room-join-request", { roomId, user: { userId, name, avatar, color } });
+        }
+      });
+
+      socket.on("room-get-join-requests", (data: { roomId: string }) => {
+        const requests = roomJoinRequests.get(data.roomId) || [];
+        socket.emit("room-join-requests-list", { roomId: data.roomId, requests });
+      });
+
+      socket.on("room-respond-join-request", (data: { roomId: string; userId: string; action: 'admit' | 'reject' | 'admit-all' }) => {
+        const { roomId, userId, action } = data;
+        let requests = roomJoinRequests.get(roomId) || [];
+        
+        if (action === 'admit-all') {
+          // Mark all requesters as admitted
+          if (!roomAdmittedUsers.has(roomId)) roomAdmittedUsers.set(roomId, new Set());
+          requests.forEach(r => {
+            roomAdmittedUsers.get(roomId)!.add(r.userId);
+            const targetSocket = onlineUsers.get(r.userId);
+            if (targetSocket) {
+              io.to(targetSocket).emit("room-join-response", { roomId, action: 'admit' });
+            }
+          });
+          requests = [];
+        } else {
+          if (action === 'admit') {
+            // Mark this user as admitted so the server gate lets them through
+            if (!roomAdmittedUsers.has(roomId)) roomAdmittedUsers.set(roomId, new Set());
+            roomAdmittedUsers.get(roomId)!.add(userId);
+          }
+          requests = requests.filter(r => r.userId !== userId);
+          const targetSocket = onlineUsers.get(userId);
+          if (targetSocket) {
+            io.to(targetSocket).emit("room-join-response", { roomId, action });
+          }
+        }
+        
+        roomJoinRequests.set(roomId, requests);
+        
+        // Also update the owner's list
+        socket.emit("room-join-requests-list", { roomId, requests });
+      });
+
+      // Owner invites a specific user to a hidden/private room
+      socket.on("room-invite-user", (data: { roomId: string; roomName: string; targetUserId: string }) => {
+        const { roomId, roomName, targetUserId } = data;
+        // Mark the invited user as admitted so the socket gate lets them through
+        if (!roomAdmittedUsers.has(roomId)) roomAdmittedUsers.set(roomId, new Set());
+        roomAdmittedUsers.get(roomId)!.add(targetUserId);
+        // Deliver invitation to target user
+        const targetSocket = onlineUsers.get(targetUserId);
+        if (targetSocket) {
+          io.to(targetSocket).emit("room-invitation", { roomId, roomName, fromUserId: socket.data.userId });
+        }
       });
 
       socket.on("room-signal", (data: { roomId: string; targetUserId: string; signal: any }) => {
