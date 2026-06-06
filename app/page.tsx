@@ -4,12 +4,23 @@ import ApplyModal, { LoginModal } from "@/components/ApplyModal";
 import { Mic, Shield, Lock, Zap, Twitter, Linkedin, Github, Mail, Activity, Star, Globe, ChevronRight } from "lucide-react";
 import { Footer } from "@/components/ui/modem-animated-footer";
 import DownloadButton from "@/components/DownloadButton";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
   const [showApply, setShowApply] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [appStars, setAppStars] = useState<number | null>(null);
   const [webStars, setWebStars] = useState<number | null>(null);
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+
+  // Auto-redirect logged-in users to dashboard
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace("/dashboard");
+    }
+  }, [user, isLoading, router]);
 
   useEffect(() => {
     const fetchAppStars = async () => {
