@@ -62,13 +62,29 @@ export async function POST(req: Request) {
 
     await dbConnect();
 
-    await CallLog.create({
-      owner: ownerId,
-      otherUser: otherUserId,
-      type,
-      duration: Number(duration) || 0,
-      status: status || "completed",
-    });
+    // Determine the mirror type for the other participant
+    const mirrorType = type === "outgoing" ? "incoming" : type === "incoming" ? "outgoing" : type;
+    const resolvedStatus = status || "completed";
+    const resolvedDuration = Number(duration) || 0;
+
+    // Create log for the caller/current user
+    // Create log for the other participant — so both users see the call in their history
+    await CallLog.insertMany([
+      {
+        owner: ownerId,
+        otherUser: otherUserId,
+        type,
+        duration: resolvedDuration,
+        status: resolvedStatus,
+      },
+      {
+        owner: otherUserId,
+        otherUser: ownerId,
+        type: mirrorType,
+        duration: resolvedDuration,
+        status: resolvedStatus,
+      },
+    ]);
 
     return NextResponse.json({ message: "Logged" }, { status: 201 });
   } catch (error) {
