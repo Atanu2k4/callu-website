@@ -54,16 +54,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const init = async () => {
       try {
         const storedSession = localStorage.getItem(SESSION_KEY);
+        const storedUser = localStorage.getItem(USER_KEY);
+
         if (storedSession) {
           try {
             const parsed = JSON.parse(storedSession) as { token: string; expiresAt: string };
-            
-            // Check if session is still valid (not expired)
+
+            // Check if session has expired client-side
             if (parsed?.token && parsed?.expiresAt) {
               const expiryTime = new Date(parsed.expiresAt).getTime();
               const now = Date.now();
-              
+
               if (expiryTime > now) {
+                // Restore cached user immediately so UI doesn't flash logged-out
+                if (storedUser) {
+                  try {
+                    const cachedUser = JSON.parse(storedUser);
+                    setUser(cachedUser);
+                  } catch {
+                    // ignore parse errors, server validation will correct state
+                  }
+                }
+
                 console.log("[Auth] Session found, validating with server...");
                 try {
                   const res = await fetch("/api/auth/session", {
@@ -71,7 +83,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ token: parsed.token }),
                   });
-                  
+
                   if (res.ok) {
                     const data = await res.json();
                     console.log("[Auth] ✓ Session validated, user:", data.user?.email);
@@ -79,17 +91,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
                     setIsLoading(false);
                     return;
-                  } else {
-                    console.warn("[Auth] Session validation failed:", res.status);
-                    // Session invalid or expired, clear it
+                  } else if (res.status === 401 || res.status === 404) {
+                    // Only clear on definitive auth failures — session truly invalid/expired
+                    console.warn("[Auth] Session rejected by server (", res.status, "), clearing.");
                     localStorage.removeItem(SESSION_KEY);
+                    localStorage.removeItem(USER_KEY);
+                    setUser(null);
+                  } else {
+                    // Server error (500, 503, etc.) or Railway cold-start — keep session & cached user
+                    console.warn("[Auth] Server error during session check (", res.status, "), keeping cached session.");
+                    // User was already restored from cache above; just continue
+                    setIsLoading(false);
+                    return;
                   }
                 } catch (error) {
-                  console.error("[Auth] Session validation error:", error);
+                  // Network failure (offline, Railway cold-start timeout, etc.)
+                  // Keep session and cached user intact — do NOT clear localStorage
+                  console.warn("[Auth] Network error during session validation, using cached user:", error);
+                  setIsLoading(false);
+                  return;
                 }
               } else {
-                console.warn("[Auth] Stored session expired, clearing...");
+                // Client-side expiry check: session definitely expired
+                console.warn("[Auth] Stored session expired client-side, clearing...");
                 localStorage.removeItem(SESSION_KEY);
+                localStorage.removeItem(USER_KEY);
+                setUser(null);
               }
             }
           } catch (parseError) {
@@ -98,13 +125,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
         }
 
-        // Fallback: check if user is in localStorage (from previous login)
-        const storedUser = localStorage.getItem(USER_KEY);
+        // Fallback: no session token — restore user from cache if present
         if (storedUser) {
           try {
-            const user = JSON.parse(storedUser);
-            console.log("[Auth] Using stored user from cache:", user.email);
-            setUser(user);
+            const cachedUser = JSON.parse(storedUser);
+            console.log("[Auth] Using stored user from cache:", cachedUser.email);
+            setUser(cachedUser);
           } catch (parseError) {
             console.error("[Auth] Failed to parse stored user:", parseError);
             localStorage.removeItem(USER_KEY);
