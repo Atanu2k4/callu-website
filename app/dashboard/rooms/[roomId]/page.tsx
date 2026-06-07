@@ -1265,11 +1265,19 @@ export default function RoomVoiceChatPage() {
   // ═══════════════════════════════════════════════════════════════════
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] bg-zinc-950 p-4 md:p-6 font-dm overflow-hidden flex flex-col rounded-3xl border border-zinc-800/30">
-      {/* Dynamic Background */}
+    <div className="relative min-h-[calc(100vh-4rem)] bg-[#09090b] p-4 md:p-6 font-dm overflow-hidden flex flex-col rounded-[2rem] border border-white/[0.05] shadow-2xl">
+      {/* Aesthetic Professional Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[128px] mix-blend-screen" />
-        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[128px] mix-blend-screen" />
+        {/* Subtle Grid Pattern */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
+        
+        {/* Ambient Glowing Orbs */}
+        <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-emerald-500/15 blur-[120px] mix-blend-screen" />
+        <div className="absolute top-[20%] -right-[10%] w-[40%] h-[60%] rounded-full bg-indigo-500/10 blur-[140px] mix-blend-screen" />
+        <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[50%] rounded-full bg-teal-500/10 blur-[130px] mix-blend-screen" />
+        
+        {/* Soft Vignette Overlay */}
+        <div className="absolute inset-0 bg-black/40 [mask-image:radial-gradient(circle_at_center,transparent_0%,black_100%)]" />
       </div>
 
       <div className="relative z-10 w-full max-w-7xl mx-auto flex-1 flex flex-col">
@@ -1561,7 +1569,13 @@ export default function RoomVoiceChatPage() {
           </div>
         ) : (
           /* ─── GRID LAYOUT ─── */
-          <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 content-start pb-24">
+          <div 
+            className="flex-1 grid gap-4 md:gap-6 pb-24 w-full h-full"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(Math.sqrt(participants.length)))}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${Math.max(1, Math.ceil(Math.sqrt(participants.length)))}, minmax(0, 1fr))`
+            }}
+          >
             <AnimatePresence mode="popLayout">
               {participants.map((participant) => (
                 <motion.div
@@ -1571,9 +1585,7 @@ export default function RoomVoiceChatPage() {
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
                   key={participant.userId}
-                  className={`group relative rounded-3xl bg-zinc-900/40 backdrop-blur-sm border border-zinc-800/50 overflow-hidden flex flex-col items-center justify-center transition-all hover:bg-zinc-800/40 hover:border-zinc-700/50 hover:shadow-xl hover:shadow-black/20 ${
-                    participant.isVideoOn ? "aspect-video" : "aspect-[3/4]"
-                  }`}
+                  className="group relative rounded-3xl bg-zinc-900/40 backdrop-blur-sm border border-zinc-800/50 overflow-hidden flex flex-col items-center justify-center transition-all hover:bg-zinc-800/40 hover:border-zinc-700/50 hover:shadow-xl hover:shadow-black/20 w-full h-full"
                 >
                   {/* Video — shown when participant has video on */}
                   {participant.isVideoOn ? (
